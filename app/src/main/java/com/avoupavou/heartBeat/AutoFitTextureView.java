@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.example.cameraaplication;
+package com.avoupavou.heartBeat;
 
 import android.content.Context;
 import android.util.AttributeSet;

@@ -1,4 +1,4 @@
-package com.example.cameraaplication;/*
+package com.avoupavou.heartBeat;/*
  * Copyright 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,13 +38,16 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.CamcorderProfile;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.SystemClock;
 import android.util.Log;
+import android.util.Range;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
@@ -60,8 +63,6 @@ import androidx.annotation.NonNull;
 import androidx.legacy.app.ActivityCompat;
 import androidx.legacy.app.FragmentCompat;
 
-import org.w3c.dom.Text;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -69,7 +70,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -96,8 +96,7 @@ public class Camera2VideoFragment extends Fragment
     private static final String FRAGMENT_DIALOG = "dialog";
 
     private static final String[] VIDEO_PERMISSIONS = {
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA
     };
 
     static {
@@ -146,6 +145,7 @@ public class Camera2VideoFragment extends Fragment
         public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture,
                                               int width, int height) {
             openCamera(width, height);
+            mHeight = height;
         }
 
         @Override
@@ -238,6 +238,9 @@ public class Camera2VideoFragment extends Fragment
     private String mNextVideoAbsolutePath;
     private CaptureRequest.Builder mPreviewBuilder;
     private ImageReader mImageReader;
+    private int mFps;
+    private long mTime;
+    private int mHeight;
 
     public static Camera2VideoFragment newInstance() {
         return new Camera2VideoFragment();
@@ -452,9 +455,12 @@ public class Camera2VideoFragment extends Fragment
 
             // Choose the sizes for camera preview and video recording
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+
             StreamConfigurationMap map = characteristics
                     .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+
             mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+
             if (map == null) {
                 throw new RuntimeException("Cannot get available preview/video sizes");
             }
@@ -514,14 +520,15 @@ public class Camera2VideoFragment extends Fragment
             return;
         }
         try {
-            dataSeries = new DataSeries(30*30);
+            dataSeries = new DataSeries(30*20);
             closePreviewSession();
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
             assert texture != null;
             texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
             mPreviewBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            mPreviewBuilder.set(CaptureRequest.FLASH_MODE,CaptureRequest.FLASH_MODE_TORCH);
 
+            mPreviewBuilder.set(CaptureRequest.FLASH_MODE,CaptureRequest.FLASH_MODE_TORCH);
+            mPreviewBuilder.set(CaptureRequest.JPEG_QUALITY,(byte)10);
 
             List surfaces = new ArrayList<>();
 
@@ -803,65 +810,131 @@ public class Camera2VideoFragment extends Fragment
             if (image == null)
                 return;
 
-            // RowStride of planes may differ from width set to image reader, depends
-            // on device and camera hardware, for example on Nexus 6P the rowStride is
-            // 384 and the image width is 352.
+            DataSeries.updateFps(1000.0f / (SystemClock.elapsedRealtime() - mTime));
+            mTime = SystemClock.elapsedRealtime();
+
+
             final Image.Plane[] planes = image.getPlanes();
 
-            ByteBuffer yPlane = planes[0].getBuffer();
+            int[] rgb = getRGBIntesitiesFromPlanes(image.getPlanes());
 
-            int total = 0;
-            int yPos =0;
+            if (rgb[0] < 100) {
+                dataSeries.invalidate();
+            }else{
+//                Log.d(TAG, "R:" + rgb[0] + " G:" + rgb[1] + " B:" + rgb[2]);
+                ByteBuffer yPlane = planes[0].getBuffer();
 
-            yPlane.rewind();
-            while(yPlane.hasRemaining()){
+
+                long total = 0;
+                int yPos = 0;
+
+                yPlane.rewind();
+                while (yPlane.hasRemaining()) {
                     total += yPlane.get();
                     yPos++;
-            }
-
-            dataSeries.addData((float)total/(float)yPos);
-            float [] yAxisData = dataSeries.getNormData(5*30);
-            LineChartView lineChartView = getActivity().findViewById(R.id.chart);
-
-            List yAxisValues = new ArrayList();
-            List axisValues = new ArrayList();
-
-            Line line = new Line(yAxisValues);
-
-
-            for (int i = 0; i < yAxisData.length; i++){
-                yAxisValues.add(new PointValue(i,yAxisData[i]));
-            }
-
-            for(int i = 0; i < yAxisData.length; i++){
-                axisValues.add(i, new AxisValue(i).setLabel(String.valueOf(i)));
-            }
-
-            line.setStrokeWidth(2);
-            line.setPointRadius(1);
-            List lines = new ArrayList();
-            lines.add(line);
-
-
-            LineChartData data = new LineChartData();
-            data.setLines(lines);
-
-            lineChartView.setLineChartData(data);
-
-//            Log.d(TAG,);
-
-
-            getActivity().runOnUiThread(new Runnable() {
-
-                @Override
-                public void run() {
-                    TextView t = (TextView) getActivity().findViewById(R.id.textView_bpm);
-                    t.setText(Float.toString(dataSeries.calc_max_fft() * 60));
                 }
-            });
+
+                dataSeries.addData((float) ((double) total / (double) yPos));
+
+                float[] yAxisData = dataSeries.getNormData((int) (30 * DataSeries.FS));
+                LineChartView lineChartView = getActivity().findViewById(R.id.chart);
+
+                List yAxisValues = new ArrayList();
+                List axisValues = new ArrayList();
+
+                Line line = new Line(yAxisValues);
+
+
+                for (int i = 0; i < yAxisData.length; i++) {
+                    yAxisValues.add(new PointValue(i, yAxisData[i]));
+                }
+
+                for (int i = 0; i < yAxisData.length; i++) {
+                    axisValues.add(i, new AxisValue(i).setLabel(String.valueOf(i)));
+                }
+
+                line.setStrokeWidth(2);
+                line.setPointRadius(1);
+                List lines = new ArrayList();
+                lines.add(line);
+
+
+                LineChartData data = new LineChartData();
+                data.setLines(lines);
+
+                lineChartView.setLineChartData(data);
+
+
+                getActivity().runOnUiThread(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        int bpm = Math.round(dataSeries.calc_max_fft() * 60);
+                        String s = bpm > 0 ? Integer.toString(bpm) : "...";
+                        TextView t = (TextView) getActivity().findViewById(R.id.textView_bpm);
+                        t.setText(s);
+                    }
+                });
+            }
 
             image.close();
         }
     };
+
+
+
+    private int[] getRGBIntesitiesFromPlanes(Image.Plane[] planes) {
+        ByteBuffer yPlane = planes[0].getBuffer();
+        ByteBuffer uPlane = planes[1].getBuffer();
+        ByteBuffer vPlane = planes[2].getBuffer();
+
+        long[] accum = {0,0,0};
+
+        int bufferIndex = 0;
+        final int total = yPlane.capacity();
+        final int uvCapacity = uPlane.capacity();
+        final int width = planes[0].getRowStride();
+
+        final int rowStride = planes[1].getRowStride();
+        final int pixelStride = planes[1].getPixelStride();
+
+
+
+
+        for (int i = 0; i < mHeight; i++) {
+
+            int uvPos = (rowStride) * i >> 2;
+
+            for (int j = 0; j < width; j++) {
+
+
+
+
+                final int y1 = (yPlane.get(i*mHeight + j) & 0xff) - 16;
+
+                final int u = (uPlane.get(uvPos + pixelStride*j) & 0xff) - 128;
+                final int v = (vPlane.get(uvPos + pixelStride*j) & 0xff) - 128;
+
+
+                final int y1192 = 1192 * y1;
+                int r = (y1192 + 1634 * v) / 1024;
+                int g = (y1192 - 833 * v - 400 * u) / 1024;
+                int b = (y1192 + 2066 * u) / 1024;
+
+                r = (r < 0) ? 0 : ((r > 255) ? 255 : r);
+                g = (g < 0) ? 0 : ((g > 255) ? 255 : g);
+                b = (b < 0) ? 0 : ((b > 255) ? 255 : b);
+
+                accum[0] +=r;
+                accum[1] +=g;
+                accum[2] +=b;
+            }
+        }
+        accum[0] /= mHeight*width;
+        accum[1] /= mHeight*width;
+        accum[2] /= mHeight*width;
+        int[] out = {(int)accum[0],(int)accum[1],(int)accum[2]};
+        return out;
+    }
 
 }

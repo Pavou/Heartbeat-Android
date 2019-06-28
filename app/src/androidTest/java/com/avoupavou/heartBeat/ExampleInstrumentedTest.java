@@ -1,4 +1,4 @@
-package com.example.cameraaplication;
+package com.avoupavou.heartBeat;
 
 import android.content.Context;
 

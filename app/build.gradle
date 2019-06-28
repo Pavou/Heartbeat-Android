@@ -4,7 +4,7 @@ android {
     compileSdkVersion 29
     buildToolsVersion "29.0.0"
     defaultConfig {
-        applicationId "com.example.cameraaplication"
+        applicationId "com.avoupavou.heartbeat"
         minSdkVersion 15
         targetSdkVersion 29
         versionCode 1

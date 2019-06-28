@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">CameraAplication</string>
+    <string name="app_name">HeartBeat</string>
     <string name="title_activity_camera">CameraActivity</string>
     <string name="permission_request">Permision for video</string>
 
