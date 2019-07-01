@@ -10,5 +10,11 @@
     <string name="intro_message">Welcome</string>
     <string name="description_info">Some info here</string>
     <string name="title_activity_main2">Heart Beat</string>
-
+    <string name="title_activity_info">About</string>
+    <string name="help_message">Block the camera with your finger. The heart icon should get red and the diagram will start displaying your pulse. Allow 10 to  30 seconds until the circle gets fully blue. </string>
+    <string name="disclaimer">No warranty is made that any of the calculations are accurate. The application does not attempt to substitute medical professionals or proper/licensed methods to calculate and measure PULSE, and engage in the practice of medicine.</string>
+    <string name="title_activity_tutorial">TutorialActivity</string>
+    <string name="title_home">Home</string>
+    <string name="title_dashboard">Dashboard</string>
+    <string name="title_notifications">Notifications</string>
 </resources>

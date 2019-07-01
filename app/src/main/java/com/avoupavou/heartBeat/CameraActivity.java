@@ -1,5 +1,6 @@
 package com.avoupavou.heartBeat;
 
+import android.content.Intent;
 import android.os.Bundle;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -52,8 +53,8 @@ public class CameraActivity extends AppCompatActivity {
         switch (item.getItemId()) {
             // action with ID action_refresh was selected
             case R.id.action_help:
-                Toast.makeText(this, "Cover camera with your finger and wait for 10 seconds ", Toast.LENGTH_SHORT)
-                        .show();
+                Intent startInfo = new Intent(getApplicationContext(),InfoActivity.class);
+                startActivity(startInfo);
                 break;
             default:
                 break;

@@ -815,7 +815,7 @@ public class Camera2VideoFragment extends Fragment
             Image image = reader.acquireLatestImage();
             if (image == null)
                 return;
-            
+
             DataSeries.updateFps(1000.0f / (SystemClock.elapsedRealtime() - mTime));
             mTime = SystemClock.elapsedRealtime();
 
