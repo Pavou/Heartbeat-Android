@@ -38,7 +38,6 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.CamcorderProfile;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
@@ -47,7 +46,6 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
 import android.util.Log;
-import android.util.Range;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
@@ -241,6 +239,12 @@ public class Camera2VideoFragment extends Fragment
     private int mFps;
     private long mTime;
     private int mHeight;
+    private LineChartView mLineChartView;
+    private TextView mBPMTextView;
+    private boolean mFlashOff;
+    private long mFlashLightCooldown;
+    private TextView mFpsTextView;
+    private CircleProgressBar mProgressBarView;
 
     public static Camera2VideoFragment newInstance() {
         return new Camera2VideoFragment();
@@ -304,9 +308,6 @@ public class Camera2VideoFragment extends Fragment
     @Override
     public void onViewCreated(final View view, Bundle savedInstanceState) {
         mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
-//        mButtonVideo = (Button) view.findViewById(R.id.video);
-//        mButtonVideo.setOnClickListener(this);
-//        view.findViewById(R.id.info).setOnClickListener(this);
     }
 
     @Override
@@ -451,6 +452,13 @@ public class Camera2VideoFragment extends Fragment
             if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
                 throw new RuntimeException("Time out waiting to lock camera opening.");
             }
+
+            mLineChartView = getActivity().findViewById(R.id.chart);
+            mBPMTextView = (TextView) getActivity().findViewById(R.id.textView_bpm);
+            mFpsTextView = getActivity().findViewById(R.id.fps_textview);
+            mProgressBarView  = getActivity().findViewById(R.id.custom_progressBar);
+            mFlashLightCooldown = 0;
+
             String cameraId = manager.getCameraIdList()[0];
 
             // Choose the sizes for camera preview and video recording
@@ -527,9 +535,6 @@ public class Camera2VideoFragment extends Fragment
             texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
             mPreviewBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
 
-            mPreviewBuilder.set(CaptureRequest.FLASH_MODE,CaptureRequest.FLASH_MODE_TORCH);
-            mPreviewBuilder.set(CaptureRequest.JPEG_QUALITY,(byte)10);
-
             List surfaces = new ArrayList<>();
 
             Surface previewSurface = new Surface(texture);
@@ -595,6 +600,7 @@ public class Camera2VideoFragment extends Fragment
      */
     private void configureTransform(int viewWidth, int viewHeight) {
         Activity activity = getActivity();
+        mHeight = viewHeight;
         if (null == mTextureView || null == mPreviewSize || null == activity) {
             return;
         }
@@ -629,7 +635,7 @@ public class Camera2VideoFragment extends Fragment
         }
         mMediaRecorder.setOutputFile(mNextVideoAbsolutePath);
         mMediaRecorder.setVideoEncodingBitRate(10000000);
-        mMediaRecorder.setVideoFrameRate(30);
+        mMediaRecorder.setVideoFrameRate(15);
         mMediaRecorder.setVideoSize(mVideoSize.getWidth(), mVideoSize.getHeight());
         mMediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
         mMediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
@@ -809,48 +815,69 @@ public class Camera2VideoFragment extends Fragment
             Image image = reader.acquireLatestImage();
             if (image == null)
                 return;
-
+            
             DataSeries.updateFps(1000.0f / (SystemClock.elapsedRealtime() - mTime));
             mTime = SystemClock.elapsedRealtime();
+
 
 
             final Image.Plane[] planes = image.getPlanes();
 
             int[] rgb = getRGBIntesitiesFromPlanes(image.getPlanes());
 
-            if (rgb[0] < 100) {
+            int rgb_norm = (rgb[0] + rgb[1] + rgb[2]) / 2;
+
+            if (mTime - mFlashLightCooldown < 1000){
+
+            }else if (rgb[0] < rgb[1] || rgb[0] < rgb[2] || rgb[0]  < rgb_norm) {
+
                 dataSeries.invalidate();
+                mProgressBarView.setProgress(0.0f);
+                if(!mFlashOff) {
+                    mPreviewBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
+                    updatePreview();
+                    mFlashOff = true;
+                    mFlashLightCooldown = mTime;
+                }
+
             }else{
-//                Log.d(TAG, "R:" + rgb[0] + " G:" + rgb[1] + " B:" + rgb[2]);
+                if(mFlashOff){
+                    mPreviewBuilder.set(CaptureRequest.FLASH_MODE,CaptureRequest.FLASH_MODE_TORCH);
+                    updatePreview();
+                    mFlashOff = false;
+                    mFlashLightCooldown = mTime;
+                }
+
                 ByteBuffer yPlane = planes[0].getBuffer();
 
 
                 long total = 0;
-                int yPos = 0;
+                long yPos = 0;
 
                 yPlane.rewind();
                 while (yPlane.hasRemaining()) {
-                    total += yPlane.get();
+                    int y = yPlane.get()  & 0xff;
+                    total += y;
                     yPos++;
                 }
 
                 dataSeries.addData((float) ((double) total / (double) yPos));
 
-                float[] yAxisData = dataSeries.getNormData((int) (30 * DataSeries.FS));
-                LineChartView lineChartView = getActivity().findViewById(R.id.chart);
 
-                List yAxisValues = new ArrayList();
-                List axisValues = new ArrayList();
+                float[] yAxisData = dataSeries.getNormData(30 * 10);
+
+                List yAxisValues = new ArrayList(yAxisData.length);
+                List axisValues = new ArrayList(yAxisData.length);
 
                 Line line = new Line(yAxisValues);
 
 
-                for (int i = 0; i < yAxisData.length; i++) {
-                    yAxisValues.add(new PointValue(i, yAxisData[i]));
+                for (int i = 0; i <yAxisData.length ; i++) {
+                    yAxisValues.add(i,new PointValue(i, yAxisData[i]));
                 }
 
-                for (int i = 0; i < yAxisData.length; i++) {
-                    axisValues.add(i, new AxisValue(i).setLabel(String.valueOf(i)));
+                for (int i = 0; i <yAxisData.length ; i++) {
+                    axisValues.add(i,new AxisValue(i).setLabel(String.valueOf(i/dataSeries.FS)));
                 }
 
                 line.setStrokeWidth(2);
@@ -862,17 +889,29 @@ public class Camera2VideoFragment extends Fragment
                 LineChartData data = new LineChartData();
                 data.setLines(lines);
 
-                lineChartView.setLineChartData(data);
+                mLineChartView.setLineChartData(data);
 
+
+                mProgressBarView.setProgressUp(dataSeries.getConfidence() * 700.0f);
+//                Log.d(TAG,dataSeries.getConfidence()+"");
 
                 getActivity().runOnUiThread(new Runnable() {
 
                     @Override
                     public void run() {
                         int bpm = Math.round(dataSeries.calc_max_fft() * 60);
-                        String s = bpm > 0 ? Integer.toString(bpm) : "...";
-                        TextView t = (TextView) getActivity().findViewById(R.id.textView_bpm);
-                        t.setText(s);
+                        String s;
+
+                        if(bpm <=0){
+                            s = "...";
+//                            mProgressBarView.setProgress(0);
+                        }else{
+                            s = Integer.toString(bpm);
+                        }
+
+                        mBPMTextView.setText(s);
+
+                        mFpsTextView.setText(DataSeries.FS + " fps");
                     }
                 });
             }
@@ -899,7 +938,7 @@ public class Camera2VideoFragment extends Fragment
         final int pixelStride = planes[1].getPixelStride();
 
 
-
+        int temp = 0;
 
         for (int i = 0; i < mHeight; i++) {
 
@@ -908,9 +947,7 @@ public class Camera2VideoFragment extends Fragment
             for (int j = 0; j < width; j++) {
 
 
-
-
-                final int y1 = (yPlane.get(i*mHeight + j) & 0xff) - 16;
+                final int y1 = (yPlane.get(temp + j) & 0xff) - 16;
 
                 final int u = (uPlane.get(uvPos + pixelStride*j) & 0xff) - 128;
                 final int v = (vPlane.get(uvPos + pixelStride*j) & 0xff) - 128;
@@ -929,6 +966,7 @@ public class Camera2VideoFragment extends Fragment
                 accum[1] +=g;
                 accum[2] +=b;
             }
+            temp++;
         }
         accum[0] /= mHeight*width;
         accum[1] /= mHeight*width;

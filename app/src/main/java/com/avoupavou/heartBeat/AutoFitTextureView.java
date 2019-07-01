@@ -17,6 +17,8 @@
 package com.avoupavou.heartBeat;
 
 import android.content.Context;
+import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.view.TextureView;
 
@@ -39,6 +41,8 @@ public class AutoFitTextureView extends TextureView {
     public AutoFitTextureView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
     }
+
+
 
     /**
      * Sets the aspect ratio for this view. The size of the view will be measured based on the ratio
@@ -66,11 +70,19 @@ public class AutoFitTextureView extends TextureView {
             setMeasuredDimension(width, height);
         } else {
             if (width < height * mRatioWidth / mRatioHeight) {
-                setMeasuredDimension(width, width * mRatioHeight / mRatioWidth);
+                setMeasuredDimension(width, width );
             } else {
-                setMeasuredDimension(height * mRatioWidth / mRatioHeight, height);
+                setMeasuredDimension(height , height);
             }
         }
     }
+
+    @Override
+    public void setBackgroundDrawable(Drawable background) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N && background != null) {
+            setBackgroundDrawable(background);
+        }
+    }
+
 
 }

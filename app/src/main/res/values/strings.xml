@@ -1,13 +1,14 @@
 <resources>
     <string name="app_name">HeartBeat</string>
     <string name="title_activity_camera">CameraActivity</string>
-    <string name="permission_request">Permision for video</string>
+    <string name="permission_request">Heart Beat is measured using the camera. Cover the camera with your finger.</string>
 
     <!-- TODO: Remove or change this placeholder text -->
-    <string name="hello_blank_fragment">Hello blank fragment</string>
     <string name="camera_error">Camera Error</string>
     <string name="stop">Stop</string>
     <string name="record">Start</string>
     <string name="intro_message">Welcome</string>
     <string name="description_info">Some info here</string>
+    <string name="title_activity_main2">Heart Beat</string>
+
 </resources>
